@@ -11,14 +11,15 @@
 struct engine {
     struct audio_event audio_queue[AUDIO_QUEUE_LEN];
     struct render_command render_queue[RENDER_QUEUE_LEN];
-    uint32_t framebuffer[Y_RESOLUTION][X_RESOLUTION]; // RGBA32
+    // uint32_t framebuffer[Y_RESOLUTION][X_RESOLUTION]; // RGBA32
+    uint8_t pixelbuf[Y_RESOLUTION][X_RESOLUTION];
     uint8_t audio_buffer[AUDIO_BUFFER_SIZE];
     struct {
         uint32_t readindex;
         uint32_t writeindex;
     } audio_ring;
-    struct tilemap tilemap;
-    struct palette palettes[8];
+    struct tileset tileset;
+    uint32_t *palette;
 };
 
 extern struct engine engine;

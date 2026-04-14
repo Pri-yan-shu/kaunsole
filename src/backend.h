@@ -5,7 +5,8 @@
 #include "input.h"
 
 void backend_init();
-void backend_render(uint32_t framebuffer[Y_RESOLUTION][X_RESOLUTION]);
+void backend_render(uint8_t pixelbuf[Y_RESOLUTION][X_RESOLUTION],
+                    uint32_t *palette);
 void backend_audio(const void *buffer, uint16_t length);
 struct input backend_input();
 uint32_t backend_time();

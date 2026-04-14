@@ -1,50 +1,152 @@
 #include "graphics.h"
-#include <stdint.h>
 #include "engine.h"
+#include "sprite.h"
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 
-void set_palette(struct palette *palette, uint8_t index) {
-    engine.palettes[index] = *palette;
-} 
-
-void load_tilemap(void *_data) {
+void load_tileset(void *_data) {
     uint8_t *data = _data;
-    engine.tilemap.data = data;
+    engine.tileset.data = _data;
+}
 
-    engine.tilemap.num_textures = data[0];
-    uint32_t offset = 1;
-    for (uint8_t i = 0; i < engine.tilemap.num_textures; i++) {
-        engine.tilemap.textures[i].offset = offset;
-        uint8_t len = data[offset];
-        offset += len * len + 1;
+void clear_pixelbuf() { memset(engine.pixelbuf, 0, sizeof(engine.pixelbuf)); }
+
+void draw_tile(uint16_t tile, uint16_t y, uint16_t x, uint8_t palette,
+               uint8_t attributes) {
+    if (x < 0 || x >= X_RESOLUTION || y < 0 || y >= Y_RESOLUTION) {
+        return;
     }
-}
 
-void draw_text_palette(const char *text, uint8_t palette, uint16_t y, uint16_t x) {
-    while (*(text++)) {
-        uint8_t c = (*text) - 'A';
-        draw_sprite_palette(c, palette, y, x);
-        x += 8;
+    if (tile & 1 << 15)
+        attributes ^= FLIP_X;
+
+    if (tile & 1 << 14)
+        attributes ^= FLIP_Y;
+
+    tile &= 0b0011111111111111;
+
+    if (!tile) {
+        fprintf(stderr, "drawing not tile\n");
     }
-}
 
-void draw_sprite(uint8_t sprite, uint16_t y, uint16_t x) {
-    draw_sprite_palette(sprite, 0, y, x); 
-}
+    // size_t offset = (size_t)tile * TILE_SIZE * BPP;
+    // fprintf(stderr, "%zu\n", (size_t)tile * 16);
 
-void draw_sprite_palette(uint8_t sprite, uint8_t palette, uint16_t y, uint16_t x) {
-    uint32_t offset = engine.tilemap.textures[sprite].offset;
-    uint8_t len = engine.tilemap.data[offset];
-    for (int i = 0; i < len; i++) {
-        uint8_t *row = &engine.tilemap.data[offset + 1 + i * len];
-        for (int j = 0; j < len; j++) {
-            if (!row[j])
+    // const uint8_t* lower = engine.tileset.data + offset;
+    const uint8_t *lower = &engine.tileset.data[tile * TILE_SIZE * BPP];
+    const uint8_t *higher = lower + TILE_SIZE;
+
+    for (int row = 0; row < TILE_SIZE; row++) {
+        if (y + row >= Y_RESOLUTION) {
+            return;
+        }
+
+        for (int col = 0; col < TILE_SIZE; col++) {
+            if (x + col >= X_RESOLUTION) {
                 continue;
+            }
 
-            uint8_t r = engine.palettes[palette].r[row[j]];
-            uint8_t g = engine.palettes[palette].g[row[j]];
-            uint8_t b = engine.palettes[palette].b[row[j]];
-            engine.framebuffer[y + i][x + j] = r << 24 | g << 16 | b << 8 | 255;
+            uint8_t ylower;
+            uint8_t yhigher;
+
+            if (attributes & FLIP_Y) {
+                ylower = lower[TILE_SIZE - row - 1];
+                yhigher = higher[TILE_SIZE - row - 1];
+            } else {
+                ylower = lower[row];
+                yhigher = higher[row];
+            }
+
+            uint8_t index;
+            if (attributes & FLIP_X)
+                index = (ylower >> col & 1u) | ((yhigher >> col & 1u) << 1);
+            else
+                index = (ylower >> (7 - col) & 1u) |
+                        ((yhigher >> (7 - col) & 1u) << 1);
+
+            if (index)
+                engine.pixelbuf[y + row][x + col] =
+                    index + palette * PALETTE_SIZE;
         }
     }
 }
 
+void draw_chars(const char *text, fnt font, uint8_t y, uint8_t x,
+                uint8_t palette) {
+    uint8_t c;
+    while ((c = *text)) {
+        if (font[c]) {
+            draw_tile(font[c], y * TILE_SIZE, x, palette, 0);
+        }
+        x += TILE_SIZE;
+        text++;
+    }
+}
+
+void draw_text(const char *text, struct font *font, uint16_t y, uint16_t x,
+               uint8_t palette) {
+    while (*text) {
+        uint8_t c = (*text) - 'A';
+        draw_tile(font->offset + c, y, x, palette, 0);
+        x += TILE_SIZE;
+        text++;
+    }
+}
+
+void draw_sprite(struct sprite *sprite) {
+    // Add flips
+    struct texture *texture = sprite->texture;
+    uint8_t num_tiles = texture->height * texture->width;
+
+    uint8_t attributes = sprite->attributes;
+    uint8_t tile =
+        (sprite->frame % (sprite->texture->num_tiles /
+                          (sprite->texture->height * sprite->texture->width))) *
+        texture->width * texture->height;
+
+    if (attributes & FLIP_Y) {
+        for (int row = texture->height; row > 0; --row) {
+            if (attributes & FLIP_X) {
+                for (int column = texture->width; column > 0; --column) {
+                    draw_tile(texture->tiles[tile], sprite->y + row * TILE_SIZE,
+                              sprite->x + column * TILE_SIZE, sprite->palette,
+                              sprite->attributes);
+                    tile++;
+                }
+            } else {
+                for (int column = 0; column < texture->width; column++) {
+                    draw_tile(texture->tiles[tile], sprite->y + row * TILE_SIZE,
+                              sprite->x + column * TILE_SIZE, sprite->palette,
+                              sprite->attributes);
+                    tile++;
+                }
+            }
+        }
+    } else {
+        for (int row = 0; row < texture->height; row++) {
+            if (attributes & FLIP_X) {
+                for (int column = texture->width - 1; column >= 0; --column) {
+                    draw_tile(texture->tiles[tile], sprite->y + row * TILE_SIZE,
+                              sprite->x + column * TILE_SIZE, sprite->palette,
+                              sprite->attributes);
+                    tile++;
+                }
+            } else {
+                for (int column = 0; column < texture->width; column++) {
+                    draw_tile(texture->tiles[tile], sprite->y + row * TILE_SIZE,
+                              sprite->x + column * TILE_SIZE, sprite->palette,
+                              sprite->attributes);
+                    tile++;
+                }
+            }
+        }
+    }
+}
+
+void next_frame(struct sprite *sprite) {
+    sprite->frame = (sprite->frame + 1) %
+                    (sprite->texture->num_tiles /
+                     (sprite->texture->height * sprite->texture->width));
+    // fprintf(stderr, "frame: %d", sprite->frame);
+}

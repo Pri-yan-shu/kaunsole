@@ -2,32 +2,68 @@
 
 #include <stdint.h>
 
-#define X_RESOLUTION 320
-#define Y_RESOLUTION 240
+#define X_RESOLUTION 256
+#define Y_RESOLUTION 256
+// #define X_RESOLUTION 320
+// #define Y_RESOLUTION 240
+
+#define TILE_SIZE 8
+#define BPP 2
+#define PALETTE_SIZE (1 << BPP)
+#define ROW_OFFSET (TILESET_SIZE * BPP / 8)
 
 struct render_command {
     uint8_t priority;
 };
 
 struct texture {
-    uint32_t offset;
+    uint8_t width;
+    uint8_t height;
+    uint8_t num_tiles;
+    uint16_t *tiles;
 };
 
-struct tilemap {
-    uint8_t *data;
-    uint16_t num_textures;
-    struct texture textures[64];
+struct hitbox {
+    uint8_t x;
+    uint8_t y;
+    uint8_t height;
+    uint8_t width;
+};
+
+struct sprite {
+    struct texture *texture;
+    struct hitbox hitbox;
+    uint8_t frame;
+    uint8_t attributes;
+    uint8_t palette;
+    uint8_t y;
+    uint8_t x;
+};
+
+struct tileset {
+    const uint8_t *data;
+};
+
+struct font {
+    uint16_t offset;
 };
 
 struct palette {
-    uint8_t r[16];
-    uint8_t g[16];
-    uint8_t b[16];
+    uint8_t r[1 << BPP];
+    uint8_t g[1 << BPP];
+    uint8_t b[1 << BPP];
 };
 
-void load_tilemap(void *);
+typedef uint16_t *fnt;
 
-void draw_text_palette(const char *, uint8_t, uint16_t, uint16_t);
-void draw_sprite(uint8_t, uint16_t, uint16_t);
-void draw_sprite_palette(uint8_t, uint8_t, uint16_t, uint16_t);
-void set_palette(struct palette *, uint8_t);
+void load_tileset(void *);
+
+void draw_text(const char *text, struct font *font, uint16_t y, uint16_t x,
+               uint8_t palette);
+void draw_chars(const char *text, fnt font, uint8_t y, uint8_t x,
+                uint8_t palette);
+void draw_sprite(struct sprite *);
+void next_frame(struct sprite *sprite);
+void draw_tile(uint16_t tile, uint16_t y, uint16_t x, uint8_t palette,
+               uint8_t attributes);
+void clear_pixelbuf();

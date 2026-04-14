@@ -8,4 +8,6 @@ struct input {
     int8_t y;
     bool a;
     bool b;
+    bool start;
+    bool select;
 };
